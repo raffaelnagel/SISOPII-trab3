@@ -195,8 +195,7 @@ void createRoom(char *newRoom)
    new.status=1;
    strcpy((new.name),newRoom);
    listR[roomCount]=new;
-   roomCount++;
-   
+   roomCount++;   
 }
 
 int join(char *room, Client client)
@@ -321,6 +320,7 @@ void readClientMessages(int clientId){
 			strcpy(previous_nickname, clients[clientId].username);
 			
 			sprintf(clients[clientId].username,"%c[%d;%dm%s%c[%dm",27,1,color,new_nickname,27,0);
+			color = 31 + (color - 31 + 1)%6;
 				
 			char nicknameMessage[MESSAGESIZE];
 			getChatTime(messageTime);
