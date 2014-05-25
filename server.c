@@ -16,7 +16,7 @@
 #define USERNAMESIZE 256
 #define PORT 4000
 #define MAXCONNECTIONS 5
-
+//gcc -lpthread -o server server.c
 typedef struct{
 	int in;
 } param;
@@ -27,8 +27,18 @@ typedef struct{
 	char* username;
 	int socket;
 	pthread_t thread;
+        int room;
 } Client;
 
+typedef struct{	
+	int status;
+        char name[100];
+			
+} Room;
+
+
+int roomCount=0;
+Room listR[100];
 Client* clients;
 int MaxClientsNumber = 400;
 int Clients_Count;
@@ -53,6 +63,12 @@ void* serverCommand(void* args);
 void DisconnectUser(int clientId);
 void* acceptConnection_LOOP(void* args);
 void* worker(void* args);
+void ping(int clientId);
+void sendToSender(int clientId);
+void createRoom(char* newRoom);
+int join(char *room, Client client);
+int sendToRoom(char* message,int room);
+void sendToClient(int clientId,char* message);
 
 int main(int argc, char const *argv[]){
 
@@ -134,6 +150,7 @@ void acceptConnection(int clientId){
 	}
 
 	clients[clientId].socket = newsockfd;
+	clients[clientId].room=-1;
 	strncpy(clients[clientId].status, "ONLINE", 7);
 }
 
@@ -172,6 +189,43 @@ void toLower(char* result, char* string){
 	}
 }
 
+void createRoom(char *newRoom)
+{
+   Room new;
+   new.status=1;
+   strcpy((new.name),newRoom);
+   listR[roomCount]=new;
+   roomCount++;
+   
+}
+
+int join(char *room, Client client)
+{
+
+   int i=0;
+   while(i<roomCount)
+   {
+      if(strcmp(room,listR[i].name)==0)
+      {
+         if(listR[i].status==0)
+	 {   
+             return -1;
+	 }
+	 else
+	 {
+	        
+	    puts("join efetuado com sucesso\n");
+            return i;
+	 } 
+	 
+      }
+      i++;
+   }
+   return -1;
+puts ("\nnao encontrado a sala\n");
+   
+}
+
 void readClientMessages(int clientId){
 
 	int n;
@@ -205,10 +259,88 @@ void readClientMessages(int clientId){
 
 			return;
 		}
+		else if(strcmp(lowerCaseMSG,"/ping") == 0)
+		{
+			ping(clientId);
+		}
+		else if(strncmp(lowerCaseMSG,"/create",7) == 0)
+		{
+			puts("create\n");
+			char newRoom[100];
+			strcpy(newRoom,lowerCaseMSG+7); 
+						
+			createRoom(newRoom);
+			
+			char messageCreate[MESSAGESIZE];
+			getChatTime(messageTime);
+			sprintf(messageCreate,"\n%s	>> Room %s created <<\n\n",messageTime, newRoom);
+			sendToClient(clientId, messageCreate);
+			
+		}
+		else if(strncmp(lowerCaseMSG,"/join",5) == 0)
+		{
+			puts("join\n");
+			char joinName[100];
+			strcpy(joinName,lowerCaseMSG+5); 
+			clients[clientId].room=join(joinName,clients[clientId]);
+			if(clients[clientId].room==-1)
+			{
+				char messageCreate[100];
+				strcpy(messageCreate,"\nThis room does not exist\n");
+				sendToClient(clientId,messageCreate);		
+			}
+			else
+			{
+				char messageCreate[MESSAGESIZE];
+				getChatTime(messageTime);
+				sprintf(messageCreate,"\n%s	>> %s enters the room %s <<\n\n",messageTime, clients[clientId].username, listR[clients[clientId].room].name);
+				sendToRoom(messageCreate, clients[clientId].room);
+			}			
+			
+		}
+		else if(strncmp(lowerCaseMSG,"/leave",6) == 0)
+		{
+			puts("leave\n");
+			if(clients[clientId].room!=-1)
+			{
+				char messageCreate2[MESSAGESIZE];
+				getChatTime(messageTime);
+				sprintf(messageCreate2,"\n%s	>> %s disconnected from the room <<\n\n",messageTime, clients[clientId].username);
+				sendToRoom(messageCreate2, clients[clientId].room);
+					
+				clients[clientId].room=-1;
+			}
+			
+		}
+		else if(strncmp(lowerCaseMSG,"/change",7) == 0)
+		{
+			puts("change\n");
+			char previous_nickname[100], new_nickname[100];
+			strcpy(new_nickname, lowerCaseMSG+7);
+			
+			strcpy(previous_nickname, clients[clientId].username);
+			
+			sprintf(clients[clientId].username,"%c[%d;%dm%s%c[%dm",27,1,color,new_nickname,27,0);
+				
+			char nicknameMessage[MESSAGESIZE];
+			getChatTime(messageTime);
+			sprintf(nicknameMessage, "%s	>> %s changed nickname to %s\n", messageTime, previous_nickname,clients[clientId].username);
+			sendToAll(nicknameMessage);
+					
+		}
+				
 		else{
+			if(clients[clientId].room==-1)
+			{		
+				char messageCreate[100];
+				strcpy(messageCreate,"\nYou are not in a room\n");
+				sendToClient(clientId,messageCreate);		
+			}			
+			
 			char clientMessage[MESSAGESIZE];
 			sprintf(clientMessage, "%s	%s says: %s\n", messageTime, clients[clientId].username, message);
-			sendToAll(clientMessage);
+			//puts("\nenviandoooo\n");
+			sendToRoom(clientMessage,clients[clientId].room);
 		}
 	}
 }
@@ -227,6 +359,53 @@ void sendToAll(char* message){
 			}
 		}
 	}
+}
+
+int sendToRoom(char* message,int room){
+	int i, n;
+	if(room==-1)return 0;
+	for(i = 0; i < MaxClientsNumber; i++){
+		
+		if(clients[i].room==room)
+		{//puts("cliente do room encontrado");
+			if(strcmp(clients[i].status, "ONLINE") == 0){
+				n = write(clients[i].socket, message, strlen(message));
+				if(n < 0){
+					fprintf(stderr,"ERROR writing to socket");
+					exit(0);
+				}
+			}
+		}
+	}
+}
+
+void ping(int clientId){
+	int i, n;
+	char* message;
+	char pong[20]="\npong";
+	message=pong;
+	
+
+	if(strcmp(clients[clientId].status, "ONLINE") == 0){
+		n = write(clients[clientId].socket, message, strlen(message));
+		if(n < 0){
+			fprintf(stderr,"ERROR writing to socket");
+			exit(0);
+		}
+	}	
+}
+
+
+void sendToClient(int clientId,char* message){
+	int i, n;	
+
+	if(strcmp(clients[clientId].status, "ONLINE") == 0){
+		n = write(clients[clientId].socket, message, strlen(message));
+		if(n < 0){
+			fprintf(stderr,"ERROR writing to socket");
+			exit(0);
+		}
+	}	
 }
 
 void* serverCommand(void* args){
@@ -289,7 +468,7 @@ void* worker(void* args){
 	//printf("DEBUG 1\n");	
 	char loginMessage[MESSAGESIZE], messageTime[MESSAGESIZE];
 	getChatTime(messageTime);
-	sprintf(loginMessage,"\n%s	>> %s enters the room <<\n\n",messageTime, clients[clientId].username);
+	sprintf(loginMessage,"\n%s	>> %s enters the chat <<\n\n",messageTime, clients[clientId].username);
 	sendToAll(loginMessage);
 
 	readClientMessages(clientId);

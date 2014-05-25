@@ -93,7 +93,7 @@ void userLogin(){
 
 	buffer[strlen(buffer) -1] = '\0';
 
-	printf("DEBUG %s\n", buffer);
+	//printf("DEBUG %s\n", buffer);
 
 	/* write in the socket */
 	n = write(sockfd, buffer, strlen(buffer));
@@ -166,7 +166,7 @@ void* readServerMessage(void* args){
 		else{
 			strcat(chatLog,buffer);
 			//strcat(chatLog,typingBuffer);
-			printf("DEBUG READ\n");
+			//printf("DEBUG READ\n");
 			refresh();
 		}
 	}
@@ -177,10 +177,14 @@ void refresh(){
 
 	pthread_mutex_lock(&mutexRefresh);
 
-	//system("clear");
+	system("clear");
 
 	fprintf(stderr,"Welcome! You are now online!\n");
 	fprintf(stderr,"-- '/logout' to exit the chat\n\n");
+	fprintf(stderr,"-- '/create' to create a room\n\n");
+	fprintf(stderr,"-- '/join' to enter the room\n\n");
+	fprintf(stderr,"-- '/leave' to exit the room\n\n");
+	fprintf(stderr,"-- '/change' to change your nickname\n\n");
     fprintf(stderr,"%s\nType your messages here: ",chatLog);
 
     pthread_mutex_unlock(&mutexRefresh);
